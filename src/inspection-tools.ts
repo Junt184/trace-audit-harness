@@ -60,7 +60,7 @@ export function createInspectionTools(
       name: "query_call_graph",
       label: "查询调用链",
       description:
-        "Query saved graph by qualified symbol substring and/or source path. Incoming/outgoing/both edges; transitive=true walks all reachable graph nodes, handling cycles without depth truncation. Returns unresolved calls and detects modified/deleted source files. It is a query over the saved static snapshot, not a fresh runtime trace.",
+        "Query saved graph by qualified symbol substring and/or source path. Incoming/outgoing/both edges; transitive=true walks all reachable graph nodes, handling cycles without depth truncation. Returns unresolved calls, detects modified/deleted/added source files in the saved scope and marks unknown freshness if enumeration fails. Rebuild stale graphs. It is a query over the saved static snapshot, not a fresh runtime trace.",
       parameters: Type.Object({
         artifact: Type.String(),
         symbol: Type.Optional(Type.String()),
@@ -75,8 +75,8 @@ export function createInspectionTools(
         transitive: Type.Optional(Type.Boolean()),
         ...pagination,
       }),
-      async execute(_id, args) {
-        return output(queryCallGraph(cwd, args, store, runId));
+      async execute(_id, args, signal) {
+        return output(await queryCallGraph(cwd, args, store, runId, signal));
       },
     }),
     defineTool({

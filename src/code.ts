@@ -265,10 +265,11 @@ export async function analyzeSource(
       if (name) {
         let parents = scopes;
         if (language === "go" && node.type === "method_declaration") {
-          const receiver = node.childForFieldName("receiver")?.text || "";
-          const receiverType = /\s+\*?([\p{L}_][\p{L}\p{N}_]*)/u.exec(
-            receiver,
-          )?.[1];
+          const receiver = node.childForFieldName("receiver");
+          const receiverType = receiver?.namedChildren[0]
+            ?.childForFieldName("type")
+            ?.text.replace(/^\*/, "")
+            .replace(/\[.*$/, "");
           if (receiverType) parents = [...scopes, receiverType];
         }
         const symbolName = classScope(name);

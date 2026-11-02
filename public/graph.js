@@ -28,6 +28,7 @@ function detail(node) {
       ":" +
       (node.nameLine || node.startLine || 1),
   );
+  if (node.signature) item($("#detail"), node.signature);
   for (const edge of data.edges.filter(
     (e) => e.from === node.id || e.to === node.id,
   )) {
@@ -67,6 +68,36 @@ function detail(node) {
       "focus",
       e.dataset.from === node.id || e.dataset.to === node.id,
     );
+}
+async function checkFreshness() {
+  const button = $("#check-freshness"),
+    status = $("#freshness");
+  button.disabled = true;
+  try {
+    const response = await fetch(
+      `/api/runs/${encodeURIComponent(run)}/call-graph-status/${encodeURIComponent(artifact)}`,
+      { cache: "no-store" },
+    );
+    if (!response.ok) throw Error("源码变化检查失败");
+    const value = await response.json();
+    status.textContent =
+      value.freshness === "unchanged"
+        ? "生成范围内的源码与快照一致；修改代码后可再次检查。"
+        : value.freshness === "stale"
+          ? `源码已变化：${value.staleFiles.length} 个文件被修改或删除，新增 ${value.addedFiles.length} 个文件。请让审计助手重新构图；当前显示原快照。`
+          : "无法确认源码是否变化，请重新构图或检查项目目录。";
+    status.title = [
+      ...value.staleFiles,
+      ...value.addedFiles,
+      value.freshnessError || "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+  } catch (error) {
+    status.textContent = `${error.message}，当前仍显示生成时的快照。`;
+  } finally {
+    button.disabled = false;
+  }
 }
 function render() {
   const q = $("#search").value.trim().toLowerCase();
@@ -212,6 +243,8 @@ try {
       "该静态范围未发现分析缺口，仍不等于完整运行时路径。",
     );
   render();
+  $("#check-freshness").addEventListener("click", checkFreshness);
+  void checkFreshness();
   $("#search").addEventListener("input", render);
   $("#transitive").addEventListener("change", render);
   $("#reset").addEventListener("click", () => {

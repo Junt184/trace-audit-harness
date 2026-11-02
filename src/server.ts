@@ -18,6 +18,7 @@ import { RunStore } from "./store.js";
 import { repositoryInfo } from "./tools.js";
 import type { RunEvent } from "./types.js";
 import { WorkspaceStore } from "./workspaces.js";
+import { callGraphStatus } from "./call-graph.js";
 
 export const store = new RunStore();
 store.recoverInterrupted();
@@ -241,6 +242,17 @@ app.get("/api/runs/:id/report", (req, res) => {
     `attachment; filename="audit-${req.params.id.slice(0, 8)}.md"`,
   );
   res.type("text/markdown").send(report);
+});
+app.get("/api/runs/:id/call-graph-status/:name", async (req, res) => {
+  const run = store.get(req.params.id);
+  const status = await callGraphStatus(
+    run.repository,
+    req.params.name,
+    store,
+    run.id,
+    AbortSignal.timeout(15000),
+  );
+  res.set("Cache-Control", "no-store").json(status);
 });
 app.get("/api/runs/:id/artifacts/:name", (req, res) => {
   store.get(req.params.id);

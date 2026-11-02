@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, realpathSync } from "node:fs";
 import { resolve, relative, basename } from "node:path";
 import { pathToFileURL } from "node:url";
 import { analyzeSource, type CodeSymbol } from "./code.js";
@@ -7,6 +7,7 @@ import {
   initializeLanguageServer,
   languageServer,
   located,
+  projectRoot,
 } from "./semantic.js";
 import { sourceFiles, digest } from "./source-files.js";
 import type { RunStore } from "./store.js";
@@ -38,6 +39,7 @@ export interface CallGraph {
   unresolved: any[];
   errors: any[];
   excluded: any[];
+  servers: { language: string; root: string; files: number; info?: unknown }[];
   coverage: any;
   note: string;
 }
@@ -76,6 +78,7 @@ export async function buildCallGraph(
       unresolved: [],
       errors: [],
       excluded: scan.excluded,
+      servers: [],
       coverage: {
         enumerationComplete: scan.enumerationComplete,
         indexedFiles: 0,
@@ -113,28 +116,83 @@ export async function buildCallGraph(
         graph.errors.push({ path: file.path, error: String(error) });
       }
     }
-    const groups = new Map<string, typeof scan.files>();
+    type Call = Awaited<ReturnType<typeof analyzeSource>>["calls"][number] & {
+      path: string;
+      from: string;
+    };
+    const calls = new Map<string, Call[]>();
+    const settled = new Set<Call>();
+    for (const file of scan.files) {
+      const syntax = parsed.get(file.path);
+      if (!syntax) continue;
+      calls.set(
+        file.path,
+        syntax.calls.map((call) => {
+          const parents = graph.nodes.filter(
+            (n) => n.path === file.path && contains(n, call.line, call.column),
+          );
+          parents.sort(
+            (a, b) =>
+              a.endLine! - a.startLine! - (b.endLine! - b.startLine!) ||
+              b.startColumn! - a.startColumn!,
+          );
+          return {
+            ...call,
+            path: file.path,
+            from: (parents[0] ||
+              graph.nodes.find(
+                (n) => n.path === file.path && n.kind === "module",
+              ))!.id,
+          };
+        }),
+      );
+    }
+    graph.coverage.callSites = [...calls.values()].reduce(
+      (n, items) => n + items.length,
+      0,
+    );
+    const groups = new Map<
+      string,
+      { root: string; files: typeof scan.files }
+    >();
     for (const file of scan.files) {
       if (!parsed.has(file.path)) continue;
-      const list = groups.get(file.language!) || [];
-      list.push(file);
-      groups.set(file.language!, list);
+      const root = projectRoot(scan.cwd, file.path);
+      const language = /^(javascript|typescript|tsx)$/.test(file.language!)
+        ? "typescript"
+        : file.language!;
+      const key = `${language}:${root}`;
+      const group = groups.get(key) || { root, files: [] };
+      group.files.push(file);
+      groups.set(key, group);
     }
-    for (const files of groups.values()) {
+    for (const { files, root } of groups.values()) {
       let client: LspClient | undefined;
       try {
         const first = files[0];
-        const { language, command } = languageServer(first.path);
-        client = new LspClient(command, scan.cwd, cancel);
+        const server = languageServer(first.path);
+        const { language, command } = server;
+        client = new LspClient(
+          command,
+          root,
+          cancel,
+          "configuration" in server ? server.configuration : undefined,
+        );
         const info = await initializeLanguageServer(
           client,
-          scan.cwd,
+          root,
           first.path,
           language,
           first.text,
         );
         if (!info.capabilities.definitionProvider)
           throw Error("语言服务器未提供语义定义查询");
+        graph.servers.push({
+          language,
+          root,
+          files: files.length,
+          info: info.serverInfo,
+        });
         for (const file of files.slice(1))
           client.notify("textDocument/didOpen", {
             textDocument: {
@@ -150,34 +208,19 @@ export async function buildCallGraph(
             },
           });
         for (const file of files) {
-          const syntax = parsed.get(file.path)!;
+          if (language === "python")
+            await client.waitForDiagnostics(pathToFileURL(file.path).href);
           graph.coverage.indexedFiles++;
-          for (const call of syntax.calls) {
+          for (const call of calls.get(file.path)!) {
             cancel.throwIfAborted();
-            graph.coverage.callSites++;
-            const parents = graph.nodes.filter(
-              (n) =>
-                n.path === file.path &&
-                contains(n, call.line, call.column) &&
-                /function|method|constructor|class_declaration|class_definition/.test(
-                  n.kind || "",
-                ),
-            );
-            parents.sort(
-              (a, b) =>
-                a.endLine! - a.startLine! - (b.endLine! - b.startLine!) ||
-                b.startColumn! - a.startColumn!,
-            );
-            const from = (parents[0] ||
-              graph.nodes.find(
-                (n) => n.path === file.path && n.kind === "module",
-              ))!.id;
-            const unresolved = { path: file.path, from, ...call };
+            const { from } = call;
+            const unresolved = call;
             if (call.dynamic) {
               graph.unresolved.push({
                 ...unresolved,
                 reason: "dynamic-callee",
               });
+              settled.add(call);
               continue;
             }
             try {
@@ -262,6 +305,7 @@ export async function buildCallGraph(
                 error: String(error),
               });
             }
+            settled.add(call);
           }
           onProgress?.({
             phase: "call-graph",
@@ -287,6 +331,18 @@ export async function buildCallGraph(
       }
       if (cancel.aborted) break;
     }
+    // Every syntactic call is accounted for even when an entire server failed,
+    // or a deadline prevented later language/project groups from being started.
+    for (const items of calls.values())
+      for (const call of items) {
+        if (!settled.has(call))
+          graph.unresolved.push({
+            ...call,
+            reason: deadline.signal.aborted
+              ? "analysis-timeout"
+              : "language-server-error",
+          });
+      }
     graph.coverage.staticAnalysisComplete =
       scan.enumerationComplete &&
       graph.errors.length === 0 &&
@@ -310,13 +366,93 @@ export async function buildCallGraph(
       coverage: graph.coverage,
       errors: graph.errors,
       excluded: graph.excluded,
+      servers: graph.servers,
       note: graph.note,
     };
   } finally {
     clearTimeout(timer);
   }
 }
-export function queryCallGraph(
+function readGraph(
+  cwd: string,
+  artifact: string,
+  store: RunStore,
+  runId: string,
+): CallGraph {
+  if (basename(artifact) !== artifact || !artifact.startsWith("call-graph-"))
+    throw Error("请选择该任务生成的调用图产物");
+  const graph: CallGraph = JSON.parse(
+    readFileSync(resolve(store.dir(runId), "artifacts", artifact), "utf8"),
+  );
+  if (
+    graph.schema !== 1 ||
+    !Array.isArray(graph.nodes) ||
+    !Array.isArray(graph.edges)
+  )
+    throw Error("不支持的调用图产物格式");
+  if (realpathSync(cwd) !== graph.repository)
+    throw Error("调用图属于其他项目，请在原项目中查询或重建");
+  return graph;
+}
+
+async function sourceStatus(
+  cwd: string,
+  graph: CallGraph,
+  signal?: AbortSignal,
+) {
+  signal?.throwIfAborted();
+  const stale = graph.files
+    .filter((f) => {
+      try {
+        return digest(readFileSync(f.path, "utf8")) !== f.sha256;
+      } catch {
+        return true;
+      }
+    })
+    .map((f) => f.path);
+  let addedFiles: string[] = [];
+  let freshnessError: string | undefined;
+  try {
+    const current = await sourceFiles(cwd, graph.scope, "graph", signal);
+    const indexed = new Set(graph.files.map((f) => f.path));
+    const currentPaths = new Set(current.files.map((f) => f.path));
+    for (const file of graph.files)
+      if (!currentPaths.has(file.path) && !stale.includes(file.path))
+        stale.push(file.path);
+    addedFiles = current.files
+      .filter((f) => !indexed.has(f.path))
+      .map((f) => f.path);
+    if (!current.enumerationComplete) freshnessError = "源码枚举未完成";
+    else if (current.excluded.length)
+      freshnessError = "部分文件被排除，无法完整确认范围内源码是否变化";
+  } catch (error) {
+    signal?.throwIfAborted();
+    freshnessError = String(error);
+  }
+  return {
+    staleFiles: stale,
+    addedFiles,
+    freshness: freshnessError
+      ? "unknown"
+      : stale.length || addedFiles.length
+        ? "stale"
+        : "unchanged",
+    freshnessError,
+    generatedAt: graph.generatedAt,
+  };
+}
+
+export async function callGraphStatus(
+  cwd: string,
+  artifact: string,
+  store: RunStore,
+  runId: string,
+  signal?: AbortSignal,
+) {
+  return sourceStatus(cwd, readGraph(cwd, artifact, store, runId), signal);
+}
+
+export async function queryCallGraph(
   cwd: string,
   args: {
     artifact: string;
@@ -329,15 +465,10 @@ export function queryCallGraph(
   },
   store: RunStore,
   runId: string,
+  signal?: AbortSignal,
 ) {
-  if (
-    basename(args.artifact) !== args.artifact ||
-    !args.artifact.startsWith("call-graph-")
-  )
-    throw Error("请选择该任务生成的调用图产物");
-  const graph: CallGraph = JSON.parse(
-    readFileSync(resolve(store.dir(runId), "artifacts", args.artifact), "utf8"),
-  );
+  signal?.throwIfAborted();
+  const graph = readGraph(cwd, args.artifact, store, runId);
   const selected = graph.nodes.filter(
     (n) =>
       (!args.symbol || n.qualifiedName.includes(args.symbol)) &&
@@ -363,16 +494,12 @@ export function queryCallGraph(
     }
     if (!args.transitive) break;
   }
-  const stale = graph.files
-    .filter((f) => {
-      try {
-        return digest(readFileSync(f.path, "utf8")) !== f.sha256;
-      } catch {
-        return true;
-      }
-    })
-    .map((f) => f.path);
   const all = [...edges];
+  const nodeIds = new Set(selected.map((node) => node.id));
+  for (const edge of all) {
+    nodeIds.add(edge.from);
+    nodeIds.add(edge.to);
+  }
   const offset = args.offset ?? 0,
     limit = args.limit ?? 100;
   if (
@@ -385,15 +512,11 @@ export function queryCallGraph(
   return {
     selected,
     edges: all.slice(offset, offset + limit),
-    nodes: graph.nodes.filter(
-      (n) =>
-        selected.some((s) => s.id === n.id) ||
-        all.some((e) => e.from === n.id || e.to === n.id),
-    ),
+    nodes: graph.nodes.filter((node) => nodeIds.has(node.id)),
     totalEdges: all.length,
     nextOffset: offset + limit < all.length ? offset + limit : null,
     unresolved: graph.unresolved.filter((v) => reached.has(v.from)),
-    staleFiles: stale,
+    ...(await sourceStatus(cwd, graph, signal)),
     coverage: graph.coverage,
     note: graph.note,
   };

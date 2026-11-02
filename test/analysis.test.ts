@@ -137,7 +137,7 @@ test("whole-scope graph uses actual bindings across aliases, preserves cycles an
     assert.ok(graph.edges.some((e: any) => e.from === b.id && e.to === a.id));
     assert.ok(!graph.edges.some((e: any) => e.to === other.id));
     assert.ok(graph.unresolved.some((c: any) => c.text === "f"));
-    const query = queryCallGraph(
+    const query = await queryCallGraph(
       x.dir,
       {
         artifact: summary.artifact,
@@ -152,11 +152,13 @@ test("whole-scope graph uses actual bindings across aliases, preserves cycles an
     assert.equal(query.coverage.runtimeComplete, false);
     writeFileSync(resolve(x.dir, "a.ts"), "export function changed(){}");
     assert.ok(
-      queryCallGraph(
-        x.dir,
-        { artifact: summary.artifact },
-        x.store,
-        x.run.id,
+      (
+        await queryCallGraph(
+          x.dir,
+          { artifact: summary.artifact },
+          x.store,
+          x.run.id,
+        )
       ).staleFiles.some((p) => p.endsWith("a.ts")),
     );
   } finally {

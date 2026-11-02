@@ -61,7 +61,8 @@ button {
   background: white;
   cursor: pointer;
 }
-#coverage {
+#coverage,
+#freshness {
   padding: 0 28px;
   color: #62736a;
   line-height: 1.6;

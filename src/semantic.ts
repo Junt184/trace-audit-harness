@@ -1,11 +1,20 @@
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
-import { readFileSync, existsSync, realpathSync } from "node:fs";
+import {
+  readFileSync,
+  existsSync,
+  realpathSync,
+  mkdtempSync,
+  cpSync,
+  rmSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, extname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createHash } from "node:crypto";
 import { pageNumbers } from "./git.js";
 import { analyzeSource } from "./code.js";
+import { javaServer } from "./java-server.js";
 
 const require = createRequire(import.meta.url);
 type Position = { line: number; character: number };
@@ -41,14 +50,14 @@ export function languageServer(path: string) {
     command = [process.env.GOPLS_PATH || "gopls"];
   if (!command && language === "php")
     command = [process.execPath, require.resolve("intelephense"), "--stdio"];
-  if (!command && language === "java") command = ["jdtls"];
+  if (!command && language === "java") return { language, ...javaServer() };
   if (!command?.length || command.some((v) => typeof v !== "string"))
     throw new Error(
       "未配置该语言的语义服务器。可用 AUDIT_LSP_SERVERS 指定命令数组；不会回退为文本匹配。",
     );
   return { language, command };
 }
-function projectRoot(cwd: string, file: string) {
+export function projectRoot(cwd: string, file: string) {
   let dir = dirname(file);
   const markers = [
     "composer.json",
@@ -60,6 +69,7 @@ function projectRoot(cwd: string, file: string) {
     "pyproject.toml",
     "pom.xml",
     "build.gradle",
+    "build.gradle.kts",
   ];
   for (;;) {
     if (markers.some((name) => existsSync(resolve(dir, name)))) return dir;
@@ -84,6 +94,11 @@ export class LspClient {
     { resolve: () => void; reject: (e: Error) => void }
   >();
   private stderr = "";
+  private workspace?: string;
+  private javaStatus?: string;
+  private javaReady = false;
+  private javaWaiters: { resolve: () => void; reject: (e: Error) => void }[] =
+    [];
   private logWaiters: {
     pattern: RegExp;
     resolve: () => void;
@@ -95,27 +110,40 @@ export class LspClient {
     command: string[],
     private cwd: string,
     private signal: AbortSignal,
+    configuration?: string,
   ) {
     signal.throwIfAborted();
+    if (command.some((arg) => arg.includes("{workspace}"))) {
+      this.workspace = mkdtempSync(resolve(tmpdir(), "trace-lsp-"));
+      if (configuration)
+        cpSync(configuration, resolve(this.workspace, "config"), {
+          recursive: true,
+        });
+      command = command.map((arg) =>
+        arg.replaceAll("{workspace}", this.workspace!),
+      );
+    }
     this.child = spawn(command[0], command.slice(1), {
       cwd,
       detached: process.platform !== "win32",
       stdio: ["pipe", "pipe", "pipe"],
     });
-    this.child.on("error", (error) =>
+    this.child.on("error", (error) => {
+      this.cleanup();
       this.fail(
         new Error(
           `语言服务器启动失败：${error.message}。请检查安装和 AUDIT_LSP_SERVERS 配置。`,
         ),
-      ),
-    );
-    this.child.on("exit", (code, sig) =>
+      );
+    });
+    this.child.on("exit", (code, sig) => {
+      this.cleanup();
       this.fail(
         new Error(
           `语言服务器退出 (${code ?? sig}) ${this.stderr.slice(-1800)}`,
         ),
-      ),
-    );
+      );
+    });
     this.child.stdin.on("error", (error) => this.fail(error));
     this.child.stderr.on("data", (chunk) => {
       this.stderr = (this.stderr + chunk).slice(-8000);
@@ -143,6 +171,8 @@ export class LspClient {
     this.readyWaiters.clear();
     for (const waiter of this.logWaiters) waiter.reject(error);
     this.logWaiters = [];
+    for (const waiter of this.javaWaiters) waiter.reject(error);
+    this.javaWaiters = [];
   }
   private send(message: object) {
     if (this.failure) throw this.failure;
@@ -167,6 +197,13 @@ export class LspClient {
       return Promise.resolve();
     return new Promise<void>((resolve, reject) =>
       this.logWaiters.push({ pattern, resolve, reject }),
+    );
+  }
+  waitForJavaReady() {
+    if (this.failure) return Promise.reject(this.failure);
+    if (this.javaReady) return Promise.resolve();
+    return new Promise<void>((resolve, reject) =>
+      this.javaWaiters.push({ resolve, reject }),
     );
   }
   request(method: string, params?: object): Promise<any> {
@@ -223,6 +260,20 @@ export class LspClient {
         this.diagnostics.set(message.params.uri, message.params.diagnostics);
         this.readyWaiters.get(message.params.uri)?.resolve();
         this.readyWaiters.delete(message.params.uri);
+      } else if (message.method === "language/status") {
+        this.javaStatus = message.params.type;
+        this.messages.push(
+          `Java ${message.params.type}: ${message.params.message}`,
+        );
+        if (this.javaStatus === "Error")
+          this.fail(
+            new Error(`Java 项目初始化失败：${message.params.message}`),
+          );
+        if (this.javaStatus === "Started") {
+          this.javaReady = true;
+          for (const waiter of this.javaWaiters) waiter.resolve();
+          this.javaWaiters = [];
+        }
       } else if (message.method === "window/logMessage") {
         const text = String(message.params.message);
         this.messages.push(text);
@@ -241,6 +292,10 @@ export class LspClient {
         else p?.resolve(message.result);
       }
     }
+  }
+  private cleanup() {
+    if (this.workspace)
+      rmSync(this.workspace, { recursive: true, force: true, maxRetries: 3 });
   }
   dispose() {
     this.signal.removeEventListener("abort", this.abort);
@@ -306,7 +361,8 @@ export async function semanticReferences(
   const seconds = args.timeoutSeconds ?? 90;
   if (!Number.isFinite(seconds) || seconds <= 0)
     throw new Error("timeoutSeconds 必须大于 0");
-  const { language, command } = languageServer(path);
+  const server = languageServer(path);
+  const { language, command } = server;
   const deadline = new AbortController();
   const timer = setTimeout(() => deadline.abort(), seconds * 1000);
   const cancel = signal
@@ -317,7 +373,12 @@ export async function semanticReferences(
     : projectRoot(cwd, path);
   let client: LspClient | undefined;
   try {
-    client = new LspClient(command, root, cancel);
+    client = new LspClient(
+      command,
+      root,
+      cancel,
+      "configuration" in server ? server.configuration : undefined,
+    );
     const info = await initializeLanguageServer(
       client,
       root,
@@ -477,7 +538,9 @@ export async function initializeLanguageServer(
               useSyntaxServer: "never",
             },
           }
-        : undefined,
+        : language === "java"
+          ? { settings: { java: { autobuild: { enabled: false } } } }
+          : undefined,
     capabilities: {
       general: { positionEncodings: ["utf-16"] },
       workspace: { configuration: true, workspaceFolders: true },
@@ -493,6 +556,7 @@ export async function initializeLanguageServer(
   )
     throw new Error("服务器没有选择 UTF-16 位置编码");
   client.notify("initialized", {});
+  if (language === "java") await client.waitForJavaReady();
   const languageId =
     language === "typescript"
       ? (/\.[cm]?jsx?$/.test(extname(path)) ? "javascript" : "typescript") +

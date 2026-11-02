@@ -78,7 +78,8 @@ GITHUB_PROXY=http://127.0.0.1:7890
 | `GITHUB_TOKEN` | 可选，供服务端 GitHub 来源请求使用，提高 API 额度 |
 | `USE_DSH_CREDENTIALS` | 默认启用；设为 `false` 关闭 DSH 凭据回退 |
 | `GOPLS_PATH` | 可选，指定 `gopls` 路径 |
-| `AUDIT_LSP_SERVERS` | 可选，按语言指定启动命令数组，如 `{"java":["/path/to/jdtls"]}` |
+| `AUDIT_LSP_SERVERS` | 可选，按语言覆盖启动命令数组；Java 自定义命令可用 `{workspace}` 占位临时目录 |
+| `JDTLS_HOME` / `JAVA_HOME` | 可选，指定 JDT LS 发行目录及启动服务器的 JDK 21+ |
 | `AUDIT_EMBED_MODEL` | 默认 `Xenova/multilingual-e5-small` |
 | `AUDIT_EMBED_REVISION` | 默认模型固定到源码中的 revision；自定义模型默认 `main` |
 | `AUDIT_EMBED_PROXY` | 默认共用 GitHub 代理；显式设为空字符串可直接下载模型 |
@@ -136,11 +137,27 @@ Pi 通用工具：`read`、`bash`、`edit`、`write`、`grep`、`find`、`ls`。
 | Python | 支持 | 内置 Pyright；工程回归通过 |
 | Go | 支持 | 需要本机 `gopls` 及项目工具链/依赖；本机回归通过 |
 | PHP / PHTML | 支持 | 内置 Intelephense；PHP 跨文件引用及调用边回归通过 |
-| Java | 支持 | 预留 jdtls 适配；尚未验收 |
+| Java | 支持 | 固定版本 JDT LS；Maven 跨文件引用、构造器、重载及调用链本机验收通过 |
 
 `semantic_references` 的行、列从 1 开始，列使用 UTF-16 编码，光标需指向标识符。可用 `projectRoot` 覆盖自动发现的根目录。语义查询每次启动独立语言服务器，完成或取消时退出；大项目加载可能较慢，默认超时 90 秒。
 
-调用图对指定范围解析调用点，再用语言服务器定义绑定建立边。查询可遍历传递关系并处理循环；Web 查看器支持搜索、节点详情和图产物下载。动态调用、外部边界、解析/依赖错误及排除文件会保留说明。**静态图不等于完整运行时调用图，也不提供完整污点分析。**
+Java 首次使用先安装 JDK 21+，再运行：
+
+```bash
+npm run setup:java
+# 需要代理时：HTTPS_PROXY=http://127.0.0.1:7890 npm run setup:java
+```
+
+安装脚本下载 Eclipse 官方 JDT LS `1.63.0`，校验固定 SHA-256，保存到忽略的 `.audit-harness/servers/`。已有发行包可通过 `JDTLS_HOME` 指定；否则回退到 PATH 中的 `jdtls`。运行 JDK 通过 `JAVA_HOME` 选择，项目目标 JDK/依赖仍按自身构建配置准备。Java 查询等待 `language/status: Started` 后开始，默认启动器为每次查询创建独立配置和工作目录，退出后清理，并把新生成的 Eclipse 元数据放在临时工作目录。自定义 `AUDIT_LSP_SERVERS.java` 命令需自行提供相应启动选项，`{workspace}` 会替换成该次查询的临时目录。当前 Java 实测为 Maven 样例，未据此宣称所有 Gradle、框架和依赖组合均通过。
+
+调用图的使用闭环：
+
+1. 在「项目调用图」快捷提示中指定范围，模型调用 `build_call_graph(scope=".",timeoutSeconds=180)`。按语言和项目根目录分组，用语法树提取调用点，再用语言服务器定义绑定建立边。
+2. 工具卡片给出完整 JSON 和 Web 查看器。页面可搜索符号、查看直接/传递上下游、点击节点查看签名和准确调用位置，并下载原图。
+3. 模型调用 `query_call_graph`，指定 `artifact`、`symbol`、`path`、`direction` 和 `transitive`，支持循环和分页。查询重新枚举原范围，返回修改/删除的 `staleFiles`、新增的 `addedFiles`，以及 `freshness`；页面自动检查，也可点击「检查源码变化」。变化后重新构图。
+4. 服务器失败或达到截止时间会保留部分图，每个已提取调用点都有已解析或未解析记录；用户取消会终止当前服务器并结束工具，不保存本次未完成图。
+
+PHP、Java、Python、Go 已通过同一次真实模型调用的构图与四次调用链查询：9 个源码文件、13 个调用点、12 条绑定边、1 个显式未解析回调。该验收使用仓库自带的受控样例，TypeScript 另有真实服务器回归。默认枚举遵循 rg ignore 规则，并在任意深度排除依赖/构建目录，包括 `node_modules/vendor/dist/build/target/.venv/.audit-harness`；显式文件范围可以选择被忽略的文件。动态调用、范围外定义、解析/依赖错误及排除文件会保留说明。源码变化检查不覆盖构建配置、依赖和运行环境变化。**静态图不等于完整运行时调用图，也不提供完整污点分析。**
 
 向量检索默认使用固定 revision 的 `multilingual-e5-small` 量化模型，在本机 CPU 生成 384 维归一化向量并按余弦相似度排序。首次使用需下载模型；索引按文件、片段及 hash 增量刷新，删除文件会从索引移除。模型输入最多 512 tokens，长单行可能截断；命中需要回读源码核实。默认索引排除依赖、构建目录和运行数据，单个文件上限 512 KiB。
 
@@ -192,7 +209,7 @@ node --check public/graph.js
 npm run smoke:vectors
 ```
 
-**2026-11-02 本机验证：28 项工程回归全部通过，类型检查、构建和两份前端脚本语法检查通过；本地真实向量模型烟雾测试通过。** 工程回归覆盖真实子进程、Git 快照、JS/TS、Python、Go、PHP 语言服务器及 Pi 会话恢复。Go 用例在缺少 `gopls` 的机器上会跳过。
+**2026-11-02 本机验证：33 项工程回归全部通过，0 失败、0 跳过；类型检查、构建和前端脚本语法检查通过。** 工程回归覆盖真实子进程、Git 快照、JS/TS、Python、Go、PHP、Java 语言服务器及 Pi 会话恢复。运行完整回归前需安装 `gopls`、JDK 21+ 并运行 `npm run setup:java`；构图回归要求真实服务器，不以跳过代替验收。本地真实向量模型烟雾测试此前通过，本轮未修改其模型逻辑。
 
 向量烟雾测试不调用审计模型；首次执行可能下载 embedding 权重，并在忽略的数据目录写入缓存/索引。
 
@@ -202,6 +219,7 @@ npm run smoke:vectors
 | --- | --- |
 | `npm run smoke` | 本工作台源码审计、工具调用和结果持久化 |
 | `npm run smoke:inspection -- /path/to/repo source/file Class.method` | 指定真实项目的符号、引用与本地 Git 工具 |
+| `npm run smoke:graph` | 仓库自带 PHP/Java/Python/Go 样例，真实模型构图、四次查询、图产物/页面/变化接口 HTTP 验收 |
 | `npm run smoke:advanced` | 语义引用、GitHub/OSV 来源与补丁产物 |
 | `node scripts/stop-smoke.mjs` | 真实父子进程与停止；`MANUAL_STOP=1` 等待 Web 手动点击 |
 | `npm run smoke:context` | 原生压缩、取消、并发保护与压缩后继续 |
@@ -209,7 +227,7 @@ npm run smoke:vectors
 
 从项目根目录执行。`HARNESS_URL` 可覆盖服务地址；`smoke:research` 使用 DokuWiki 的 `inc/auth.php`，目标须包含对应源码，且受控样例目录首次运行时应不存在。`MANUAL_COMPACT=1 MANUAL_RESUME=1` 可让上下文脚本等待界面操作。
 
-此前已记录 DeepSeek 的真实审计、语义/在线修复、停止/续接、重启恢复和手动压缩验收。**新增调用图、PHP、向量检索及补丁回归的工程验证，与新增工具经真实模型组合调用的端到端验收分别记录；后者尚待完成。** 详细结果及历史边界见[验收记录](docs/验收记录.md)。
+此前已记录 DeepSeek 的真实审计、语义/在线修复、停止/续接、重启恢复和手动压缩验收。**四语言静态调用图已通过 `smoke:graph` 的真实模型端到端验收；DokuWiki 的 `smoke:research` 组合仍待执行。** 本轮浏览器实点验收受本机锁屏及 Work 禁用浏览器访问阻断；页面、脚本、图数据和源码变化接口已通过 HTTP 检查，尚未把这写成界面交互通过。详细结果及历史边界见[验收记录](docs/验收记录.md)。
 
 ## 项目结构
 
@@ -241,7 +259,7 @@ docs/                      验收记录
 
 ## 当前边界与后续方向
 
-当前重点是可持续使用的本地审计体验。完整污点分析、框架专用实验环境、Java 语义验收、统一后台服务管理、运行中追加指令、多 Agent、MCP/外部技能配置、源码文件树与跳转、统一产物管理和长期日志分页尚待建设。
+当前重点是可持续使用的本地审计体验。完整污点分析、框架专用实验环境、统一后台服务管理、运行中追加指令、多 Agent、MCP/外部技能配置、源码文件树与跳转、统一产物管理和长期日志分页尚待建设。
 
 优先补齐新增工具的真实模型组合验收，再按真实长任务的卡点改进日志、产物和实验环境管理。历史需求与技术调研见[需求分析、技术选型与开发计划](需求分析、技术选型与开发计划.md)，其中外部项目比较是 2026-10-29 的资料快照，当前实现以本 README 和验收记录为准。
 

@@ -37,6 +37,8 @@
     "start": "node dist/src/server.js",
     "check": "tsc --noEmit",
     "test": "tsx --test test/*.test.ts",
+    "setup:java": "node scripts/setup-java.mjs",
+    "smoke:graph": "node scripts/graph-smoke.mjs",
     "smoke": "node scripts/smoke.mjs",
     "smoke:inspection": "node scripts/inspection-smoke.mjs",
     "smoke:advanced": "node scripts/advanced-smoke.mjs",

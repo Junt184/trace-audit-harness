@@ -23,8 +23,10 @@
           id="transitive"
         />展示匹配节点的全部上下游链</label
       ><button id="reset">查看全部</button><span id="count"></span>
+      <button id="check-freshness">检查源码变化</button>
     </section>
     <p id="coverage"></p>
+    <p id="freshness" role="status">正在检查源码变化…</p>
     <main>
       <section id="canvas" aria-label="静态调用关系图">
         <svg id="graph" role="img" aria-label="调用图节点与有向边"></svg>

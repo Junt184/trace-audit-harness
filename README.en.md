@@ -78,7 +78,8 @@ Set the context window and maximum output tokens in the model settings. Defaults
 | `GITHUB_TOKEN` | Optional server-side GitHub source-request token for higher API limits |
 | `USE_DSH_CREDENTIALS` | Enabled by default; `false` disables the DSH fallback |
 | `GOPLS_PATH` | Optional path to `gopls` |
-| `AUDIT_LSP_SERVERS` | Per-language command arrays, e.g. `{"java":["/path/to/jdtls"]}` |
+| `AUDIT_LSP_SERVERS` | Per-language command overrides; Java commands can use `{workspace}` for a temporary directory |
+| `JDTLS_HOME` / `JAVA_HOME` | Optional JDT LS distribution and JDK 21+ for launching the server |
 | `AUDIT_EMBED_MODEL` | `Xenova/multilingual-e5-small` |
 | `AUDIT_EMBED_REVISION` | Pinned in source for the default model; `main` for a custom model unless specified |
 | `AUDIT_EMBED_PROXY` | Defaults to the GitHub proxy; an explicit empty string downloads models directly |
@@ -136,11 +137,27 @@ Pi provides `read`, `bash`, `edit`, `write`, `grep`, `find`, and `ls`. Trace reg
 | Python | Supported | Bundled Pyright; engineering regression passed |
 | Go | Supported | Requires local `gopls` and project toolchain/dependencies; local regression passed |
 | PHP / PHTML | Supported | Bundled Intelephense; PHP cross-file references and graph edges passed regression |
-| Java | Supported | jdtls adapter available; not yet validated |
+| Java | Supported | Pinned JDT LS; Maven cross-file references, constructors, overloads, and call chains verified locally |
 
 `semantic_references` uses 1-based lines and columns, with UTF-16 columns pointing inside an identifier. `projectRoot` overrides automatic root discovery. A semantic query starts its own language server and closes it on completion or cancellation. Large projects may load slowly; the default timeout is 90 seconds.
 
-Call graphs parse call sites in the selected scope and bind edges through language-server definitions. Queries handle cycles and transitive traversal. The web viewer provides search, node details, and artifact download. Dynamic calls, external boundaries, syntax/dependency failures, and excluded files are reported. **A static graph is not a complete runtime graph or a full taint analysis.**
+For Java, install JDK 21+ and provision the server once:
+
+```bash
+npm run setup:java
+# With a proxy: HTTPS_PROXY=http://127.0.0.1:7890 npm run setup:java
+```
+
+The installer downloads Eclipse JDT LS `1.63.0`, verifies a pinned SHA-256, and stores it in ignored `.audit-harness/servers/`. `JDTLS_HOME` selects an existing distribution; otherwise a missing local installation falls back to `jdtls` on PATH. `JAVA_HOME` selects the server JDK; prepare the target JDK and dependencies using the project's own build configuration. Java requests wait for `language/status: Started`. The default launcher isolates configuration/workspace directories per invocation, removes them on exit, and redirects newly generated Eclipse metadata there. Custom `AUDIT_LSP_SERVERS.java` commands must provide equivalent options; `{workspace}` expands to an invocation-specific temporary directory. Java verification currently covers a Maven sample, not every Gradle, framework, or dependency combination.
+
+The call graph workflow is:
+
+1. Use the call graph prompt shortcut and select a scope. The model invokes `build_call_graph(scope=".",timeoutSeconds=180)`, groups files by language/project root, parses calls, and binds targets with language-server definitions.
+2. Open the full JSON or web viewer from the tool card. Search symbols, explore direct/transitive neighbors, inspect signatures and precise call locations, and download the graph.
+3. Query with `query_call_graph`, specifying `artifact`, `symbol`, `path`, `direction`, and `transitive`. Traversal handles cycles and pagination. Queries enumerate the original scope again, returning changed/deleted `staleFiles`, new `addedFiles`, and `freshness`. The viewer checks automatically and offers a source-change check button. Rebuild after changes.
+4. Server failures or deadlines preserve an explicit partial graph: every extracted call is resolved or recorded as unresolved. User cancellation terminates the active server and rejects the tool without saving that unfinished graph.
+
+PHP, Java, Python, and Go passed one real-model build and four call-chain queries: 9 source files, 13 call sites, 12 bound edges, and 1 explicit unresolved callback. This uses committed controlled samples; TypeScript has separate real-server regression coverage. Enumeration follows rg ignore rules and excludes dependency/build directories at every depth, including `node_modules/vendor/dist/build/target/.venv/.audit-harness`; explicit file scopes can select ignored files. Dynamic calls, outside-scope definitions, syntax/dependency failures, and exclusions remain visible. Freshness checks cover sources, not build configuration, dependency, or runtime changes. **A static graph is not a complete runtime graph or a full taint analysis.**
 
 Vector search defaults to a pinned, quantized `multilingual-e5-small` model running on the local CPU, producing normalized 384-dimensional embeddings ranked by cosine similarity. First use downloads weights. File and chunk hashes support incremental refresh; deleted files leave the index. Model input is capped at 512 tokens, so long individual lines may be truncated. Verify hits against the source. Dependencies, build output, and run data are excluded by default; individual indexed files are limited to 512 KiB.
 
@@ -192,7 +209,7 @@ node --check public/graph.js
 npm run smoke:vectors
 ```
 
-**Local verification on 2026-11-02: all 28 engineering tests passed, as did type checking, build, both frontend syntax checks, and the real local vector-model smoke test.** Tests cover real child processes, Git snapshots, JS/TS, Python, Go and PHP language servers, and Pi session recovery. The Go test skips when `gopls` is unavailable.
+**Local verification on 2026-11-02: all 33 engineering tests passed, with no failures or skips; type checking, build, and frontend syntax checks passed.** Tests cover real child processes, Git snapshots, JS/TS, Python, Go, PHP, and Java language servers, and Pi session recovery. Install `gopls`, JDK 21+, and run `npm run setup:java` before the full suite; graph tests require real servers. The real local vector smoke test passed previously; this change does not modify the embedding model logic.
 
 The vector smoke test does not call the audit model. First use may download embedding weights and write cache/index files to the ignored data directory.
 
@@ -202,6 +219,7 @@ The following scripts require a running workbench and a configured real model. T
 | --- | --- |
 | `npm run smoke` | Workbench source audit, tools, and persistence |
 | `npm run smoke:inspection -- /path/to/repo source/file Class.method` | Symbol/reference/local Git tools in a real repository |
+| `npm run smoke:graph` | Real-model graph build and four queries over committed PHP/Java/Python/Go samples; graph/viewer/freshness HTTP checks |
 | `npm run smoke:advanced` | Semantic references, GitHub/OSV sources, and patch artifacts |
 | `node scripts/stop-smoke.mjs` | Real parent/child cancellation; `MANUAL_STOP=1` waits for a web click |
 | `npm run smoke:context` | Native compaction, cancellation, concurrency guards, and resume |
@@ -209,7 +227,7 @@ The following scripts require a running workbench and a configured real model. T
 
 Run from the project root. `HARNESS_URL` overrides the server address. The research script expects DokuWiki's `inc/auth.php` and a fresh controlled-sample directory. Set `MANUAL_COMPACT=1 MANUAL_RESUME=1` for manual context UI steps.
 
-Earlier records cover real DeepSeek audits, semantic/online fix tools, stop/resume, restart recovery, and manual compaction. **Engineering checks of the new graph/PHP/vector/patch tools are recorded separately from their combined end-to-end use by a real model; that combined validation remains pending.** See the [validation record, in Chinese](docs/验收记录.md) for evidence and historical boundaries.
+Earlier records cover real DeepSeek audits, semantic/online fix tools, stop/resume, restart recovery, and manual compaction. **The four-language graph passed real-model end-to-end acceptance with `smoke:graph`; the larger DokuWiki `smoke:research` combination remains pending.** Interactive browser verification was blocked by the locked Mac and disabled browser access in Work settings. Viewer assets, graph data, and freshness endpoints were checked over HTTP; UI interaction is not claimed as verified. See the [validation record, in Chinese](docs/验收记录.md) for evidence and historical boundaries.
 
 ## Project structure
 
@@ -241,7 +259,7 @@ Main endpoints include `GET/POST /api/workspaces`, `GET/POST /api/runs`, `GET /a
 
 ## Current limits and next steps
 
-Pending work includes full taint analysis, framework-specific labs, Java semantic validation, background service management, instructions during active execution, multi-agent orchestration, MCP/external skill configuration, a source tree and source navigation, unified artifact management, and long-term log pagination.
+Pending work includes full taint analysis, framework-specific labs, background service management, instructions during active execution, multi-agent orchestration, MCP/external skill configuration, a source tree and source navigation, unified artifact management, and long-term log pagination.
 
 The next priority is combined real-model validation of new tools, followed by log, artifact, and environment improvements driven by real long audits. The [requirements and architecture notes, in Chinese](需求分析、技术选型与开发计划.md) contain external-project research dated 2026-10-29. This README and the validation record describe the current implementation.
 
