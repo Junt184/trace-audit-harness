@@ -1,0 +1,147 @@
+:root {
+  color-scheme: light;
+  font: 14px system-ui;
+  color: #263a32;
+  background: #f5f7f8;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+header {
+  position: relative;
+  padding: 22px 28px;
+  background: #fff;
+  border-bottom: 1px solid #dfe5e1;
+}
+h1 {
+  font-size: 24px;
+  margin: 12px 0;
+}
+h2 {
+  font-size: 15px;
+}
+a {
+  color: #356e57;
+}
+header p {
+  max-width: 85%;
+  overflow-wrap: anywhere;
+}
+#download {
+  position: absolute;
+  right: 28px;
+  top: 27px;
+}
+.controls {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  padding: 18px 28px;
+  flex-wrap: wrap;
+}
+label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+input:not([type="checkbox"]) {
+  width: 280px;
+  padding: 10px;
+  border: 1px solid #cdd7d0;
+  border-radius: 7px;
+  background: #fff;
+}
+button {
+  padding: 9px;
+  border: 1px solid #cdd7d0;
+  border-radius: 7px;
+  background: white;
+  cursor: pointer;
+}
+#coverage {
+  padding: 0 28px;
+  color: #62736a;
+  line-height: 1.6;
+}
+main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 330px;
+  gap: 16px;
+  padding: 0 20px 20px;
+  height: 68vh;
+}
+#canvas {
+  background: white;
+  border: 1px solid #dfe5e1;
+  border-radius: 10px;
+  overflow: auto;
+}
+aside {
+  overflow: auto;
+  padding: 10px 18px;
+  border: 1px solid #dfe5e1;
+  border-radius: 10px;
+  background: white;
+}
+svg {
+  display: block;
+}
+.edge {
+  stroke: #a0b7aa;
+  stroke-width: 1;
+  fill: none;
+  opacity: 0.3;
+}
+.edge.focus {
+  stroke: #276247;
+  stroke-width: 2;
+  opacity: 1;
+}
+.node {
+  cursor: pointer;
+}
+.node rect {
+  fill: #edf4ef;
+  stroke: #c2d3c8;
+}
+.node.external rect {
+  fill: #fbf3e6;
+  stroke: #ddcba9;
+}
+.node.active rect {
+  fill: #c8e4d3;
+  stroke: #286449;
+}
+.node text {
+  font-size: 12px;
+  fill: #263a32;
+}
+.file {
+  font-size: 12px;
+  fill: #718077;
+}
+.item {
+  padding: 9px 0;
+  border-bottom: 1px solid #edf0ee;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+.error {
+  color: #a25442;
+}
+@media (max-width: 800px) {
+  main {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+  #canvas {
+    height: 60vh;
+  }
+  aside {
+    max-height: 45vh;
+  }
+}

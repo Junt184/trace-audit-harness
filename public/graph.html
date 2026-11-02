@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Trace · 调用图</title>
+    <link rel="stylesheet" href="/graph.css" />
+  </head>
+  <body>
+    <header>
+      <a id="back" href="/">← 返回审计</a>
+      <h1>项目调用图</h1>
+      <p id="summary">正在读取真实图数据…</p>
+      <a id="download" target="_blank" rel="noopener">完整 JSON</a>
+    </header>
+    <section class="controls">
+      <label
+        >查找符号或文件
+        <input id="search" placeholder="函数名、方法名、文件路径" /></label
+      ><label
+        ><input
+          type="checkbox"
+          id="transitive"
+        />展示匹配节点的全部上下游链</label
+      ><button id="reset">查看全部</button><span id="count"></span>
+    </section>
+    <p id="coverage"></p>
+    <main>
+      <section id="canvas" aria-label="静态调用关系图">
+        <svg id="graph" role="img" aria-label="调用图节点与有向边"></svg>
+      </section>
+      <aside>
+        <h2>符号与调用位置</h2>
+        <p>
+          点击节点查看来向与去向。静态调用边基于语言服务器定义，外部边界与未解析调用会单独说明。
+        </p>
+        <div id="detail"></div>
+        <h2>未解析与分析边界</h2>
+        <div id="limitations"></div>
+      </aside>
+    </main>
+    <script type="module" src="/graph.js"></script>
+  </body>
+</html>

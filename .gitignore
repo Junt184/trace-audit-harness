@@ -1,0 +1,18 @@
+node_modules/
+dist/
+.audit-harness/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+test-results/
+
+# Local validation screenshots may include source paths and audit output.
+/docs/*.jpg
+/docs/*.jpeg
+/docs/*.png
+
+# Unrelated local article drafts; keep them on the author's machine.
+/2026-AI挖洞vs古法挖洞-合并版（修订版）.md
+/红队怎么把 5 个中低危「串」成一次高危？（修订版）.md

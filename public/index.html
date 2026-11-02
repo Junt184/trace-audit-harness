@@ -1,0 +1,494 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Trace · 代码审计 Harness</title>
+    <meta
+      name="description"
+      content="基于 Pi SDK 的本地代码审计 Agent 工作台"
+    />
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <aside class="sidebar">
+      <a class="brand" href="/" aria-label="Trace 首页"
+        ><span class="brand-mark">τ</span
+        ><span>trace<span class="brand-dot">.</span></span
+        ><span class="edition">LOCAL</span></a
+      >
+      <button
+        id="workspace-button"
+        class="workspace-switcher"
+        aria-haspopup="dialog"
+        title="选择或创建项目工作空间"
+      >
+        <span id="workspace-avatar" class="workspace-avatar">▱</span>
+        <span class="workspace-label"
+          ><small>项目工作空间</small
+          ><strong id="workspace-name">选择项目</strong></span
+        ><span class="workspace-chevron">⌄</span>
+      </button>
+      <button
+        id="workspace-active"
+        type="button"
+        class="workspace-active hidden"
+      ></button>
+      <button class="new-run" id="new-run">
+        <span>＋</span> 新建审计 <kbd>N</kbd>
+      </button>
+      <div class="side-label">代码审计</div>
+      <nav id="audit-nav" aria-label="代码审计导航">
+        <button data-page="tasks">
+          <span>▤</span>审计任务<span id="run-count" class="nav-count">0</span>
+        </button>
+        <button data-page="trace"><span>⌁</span>执行轨迹</button>
+        <button data-page="findings">
+          <span>◇</span>发现<span id="finding-count" class="nav-count">0</span>
+        </button>
+        <button data-page="report"><span>≡</span>报告</button>
+        <button data-page="notes"><span>▧</span>笔记</button>
+      </nav>
+      <div class="sidebar-project">
+        <span>本机代码目录</span>
+        <p id="sidebar-repository">尚未选择项目</p>
+      </div>
+      <div class="sidebar-bottom">
+        <div class="engine-status">
+          <span class="live-dot"></span
+          ><span>Pi SDK <span class="muted">1.4.0</span></span>
+        </div>
+        <button id="settings-side" class="side-settings">
+          ⚙ 模型与连接设置
+        </button>
+        <div class="local-note">在你的机器上运行 · 数据保存在本地</div>
+      </div>
+    </aside>
+    <main class="workspace">
+      <header class="topbar">
+        <div class="breadcrumb">
+          <span id="breadcrumb-project">工作台</span><span>/</span
+          ><strong id="breadcrumb-title">新建审计</strong>
+        </div>
+        <div class="top-actions">
+          <span id="connection" class="connection"
+            ><span class="live-dot"></span> 连接服务中</span
+          ><button id="settings-button" class="model-button">
+            <span class="model-symbol">◇</span
+            ><span id="model-name">配置模型</span><span class="chevron">⌄</span>
+          </button>
+        </div>
+      </header>
+      <section id="session-strip" class="session-strip hidden">
+        <div>
+          <span class="eyebrow">CODE AUDIT</span>
+          <h2 id="section-title">执行轨迹</h2>
+        </div>
+        <div class="session-picker">
+          <label for="run-select">当前审计</label
+          ><select id="run-select" aria-label="选择审计任务"></select>
+        </div>
+      </section>
+      <section id="tasks-view" class="tasks-view hidden">
+        <div class="tasks-heading">
+          <div>
+            <h1>审计任务</h1>
+            <p>这个工作空间的执行记录与审计成果。</p>
+          </div>
+          <button id="tasks-new" class="primary">＋ 新建审计</button>
+        </div>
+        <div id="run-list" aria-label="当前项目审计任务"></div>
+      </section>
+      <section id="no-run-view" class="no-run-view hidden">
+        <div id="no-run-content"></div>
+        <button id="empty-new" class="primary">＋ 开始第一次审计</button>
+      </section>
+      <section id="welcome" class="welcome">
+        <div class="eyebrow">
+          <span></span> A WORKSPACE FOR SECURITY REASONING
+        </div>
+        <h1>从代码，到证据<span class="accent">。</span></h1>
+        <p class="intro">
+          把阅读、推理和验证连起来。让 Agent 追踪代码，<br
+            class="desktop-break"
+          />运行实验，留下每一步可继续的审计记录。
+        </p>
+        <form id="create-form" class="launch-card">
+          <div class="launch-card-heading">
+            <span class="small-icon">⌘</span><strong>启动一次审计</strong
+            ><span class="tag">真实仓库 · 真实执行</span>
+          </div>
+          <label for="repository">代码仓库 <span>本机目录</span></label>
+          <div class="input-with-button">
+            <span class="folder-symbol">▱</span
+            ><input
+              id="repository"
+              readonly
+              required
+              autocomplete="off"
+              placeholder="/path/to/your/repository"
+            /><button type="button" id="browse-button" class="text-button">
+              更换项目
+            </button>
+          </div>
+          <div id="repo-detail" class="field-help">
+            选择要审计的源码目录，Agent 将在该目录中工作。
+          </div>
+          <label for="goal">审计目标</label>
+          <textarea
+            id="goal"
+            required
+            rows="4"
+            placeholder="描述你想排查的风险、模块或问题。也可以让 Agent 先了解项目，自主选择值得追踪的链路。"
+          ></textarea>
+          <div class="prompt-suggestions">
+            <button
+              type="button"
+              data-prompt="分析项目的认证与权限边界，沿真实入口追踪潜在越权问题。读取相关源码和测试，必要时运行最小实验，并记录有证据的发现。"
+            >
+              认证与权限</button
+            ><button
+              type="button"
+              data-prompt="审计用户输入到文件读写、路径拼接和上传处理的链路。结合配置、调用方和已有测试判断可达性，验证值得跟进的假设。"
+            >
+              文件与路径</button
+            ><button
+              type="button"
+              data-prompt="先了解项目结构，自主选择高价值的安全审计方向。阅读真实源码，追踪输入与危险操作，运行必要的验证，并保存发现和排除理由。"
+            >
+              自主探索
+            </button>
+            <button
+              type="button"
+              data-prompt="先了解项目的符号结构，使用 code_outline、read_symbol 和 find_references 追踪一个值得审计的函数及其候选调用方。结合上下文判断实际入口与输入控制，保存有依据的发现。引用查询只是同名候选，不要当成完整调用图。"
+            >
+              符号追踪
+            </button>
+            <button
+              type="button"
+              data-prompt="查看本地 Git 版本与历史，自主选择一处与安全相关的修改。用 git_history 和 git_patch 阅读真实修复，再通过 read_symbol 的 revision 对比相关函数，追踪可能遗漏的调用方。不自动切换分支，不把本地 tag 当成已发布修复，结论注明依据与边界。"
+            >
+              修复对比
+            </button>
+            <button
+              type="button"
+              data-prompt="选择一个值得审计的符号，用 semantic_references 按源码光标查询真实语义引用，区分同名符号和导入别名。检查语言服务器诊断与项目范围，再沿真实调用方继续分析。"
+            >
+              语义引用
+            </button>
+            <button
+              type="button"
+              data-prompt="使用 search_fix_sources 查询与目标模块或依赖相关的真实在线通告和修复资料，再通过 read_fix_source 读取实际补丁与来源。结合本地版本和源码判断适用性，区分显式修复引用、搜索候选和未确认事项。"
+            >
+              在线修复
+            </button>
+            <button
+              type="button"
+              data-prompt="按项目规模选择合适范围，使用 build_call_graph 构建真实静态调用图，用 query_call_graph 追踪关键入口到危险操作的链路；说明动态调用与未解析边界，保留图产物。"
+            >
+              项目调用图
+            </button>
+            <button
+              type="button"
+              data-prompt="使用 semantic_search 按自然语言寻找认证、权限和用户输入处理相关的代码，再读源码核实命中；由你选择合适索引范围，说明结果边界。"
+            >
+              向量检索
+            </button>
+          </div>
+          <div class="launch-footer">
+            <span
+              ><span class="live-dot"></span
+              ><span id="launch-model">等待模型配置</span></span
+            ><button class="primary" id="launch-button" type="submit">
+              开始审计 <span>↗</span>
+            </button>
+          </div>
+        </form>
+        <div class="capabilities">
+          <div>
+            <span>01</span><strong>跟随执行</strong>
+            <p>实时查看工具调用与模型输出</p>
+          </div>
+          <div>
+            <span>02</span><strong>保留证据</strong>
+            <p>源码位置、实验与发现随任务保存</p>
+          </div>
+          <div>
+            <span>03</span><strong>接着工作</strong>
+            <p>随时停止，带着已有上下文继续</p>
+          </div>
+        </div>
+      </section>
+      <section id="run-view" class="run-view hidden">
+        <div class="run-heading">
+          <div>
+            <div class="eyebrow">AUDIT SESSION <span id="short-id"></span></div>
+            <h1 id="run-title"></h1>
+            <div class="run-repo" id="run-repo"></div>
+          </div>
+          <div class="run-controls">
+            <span id="run-status" class="status-badge"></span
+            ><button id="stop-button" class="stop-button" disabled>
+              ■ 停止执行</button
+            ><button id="export-button" class="secondary">↓ 导出报告</button>
+          </div>
+        </div>
+        <div class="run-metrics">
+          <div><span>工具调用</span><strong id="metric-tools">0</strong></div>
+          <div>
+            <span>审计发现</span><strong id="metric-findings">0</strong>
+          </div>
+          <div>
+            <span>输入 / 输出 TOKEN</span
+            ><strong id="metric-tokens">0 / 0</strong>
+          </div>
+          <div><span>会话历时</span><strong id="metric-time">—</strong></div>
+        </div>
+        <section class="context-panel" aria-label="上下文空间">
+          <div class="context-heading">
+            <div>
+              <strong>上下文空间</strong
+              ><span id="context-mode" class="context-mode">读取中…</span>
+            </div>
+            <button
+              id="compact-button"
+              type="button"
+              class="secondary"
+              disabled
+            >
+              压缩上下文
+            </button>
+          </div>
+          <div class="context-values">
+            <span id="context-used">—</span><span id="context-percent">—</span>
+          </div>
+          <div
+            id="context-meter"
+            class="context-meter"
+            role="progressbar"
+            aria-label="上下文占用"
+            aria-valuemin="0"
+            aria-valuemax="100"
+          >
+            <span></span>
+          </div>
+          <div class="context-footer">
+            <span id="context-remaining">正在读取 SDK 上下文统计</span
+            ><span id="context-auto">自动压缩：已开启</span>
+          </div>
+          <p id="context-detail" class="context-detail"></p>
+        </section>
+        <div class="audit-grid">
+          <section class="execution-panel">
+            <div class="panel-title">
+              <strong>执行轨迹</strong
+              ><span class="panel-subtitle">EXECUTION TRACE</span
+              ><span id="toolkit-count" class="toolkit-count hidden"></span
+              ><button id="scroll-bottom" class="text-button">↓ 最新</button>
+            </div>
+            <div
+              id="timeline"
+              class="timeline"
+              role="log"
+              aria-label="Agent 执行轨迹"
+            ></div>
+            <form id="continue-form" class="continue-form">
+              <textarea
+                id="followup"
+                rows="2"
+                placeholder="补充线索、指定验证方式，或继续这个审计…"
+                aria-label="继续审计指令"
+              ></textarea>
+              <div>
+                <span id="continue-hint">历史上下文会随会话继续</span
+                ><button
+                  id="stop-inline"
+                  class="stop-button hidden"
+                  type="button"
+                >
+                  ■ 停止执行</button
+                ><button id="continue-button" class="primary" type="submit">
+                  继续审计 ↑
+                </button>
+              </div>
+            </form>
+          </section>
+          <section class="results-panel hidden">
+            <div class="panel-title">
+              <strong id="result-title">发现</strong
+              ><span id="result-description" class="result-description"></span>
+            </div>
+            <div id="findings-panel" class="result-content"></div>
+            <div id="report-panel" class="result-content markdown hidden"></div>
+            <div id="notes-panel" class="result-content markdown hidden"></div>
+          </section>
+        </div>
+      </section>
+      <footer class="page-footer">
+        <span>TRACE / CODE AUDIT HARNESS</span
+        ><span>模型自主推理 · 工具真实执行</span>
+      </footer>
+    </main>
+    <dialog id="workspace-modal" aria-labelledby="workspace-modal-title">
+      <div class="modal-form">
+        <div class="modal-heading">
+          <div>
+            <span class="eyebrow">PROJECT WORKSPACES</span>
+            <h2 id="workspace-modal-title">选择项目工作空间</h2>
+          </div>
+          <button
+            type="button"
+            class="icon-button close-modal"
+            aria-label="关闭"
+          >
+            ×
+          </button>
+        </div>
+        <p class="modal-description">
+          每个代码项目保留自己的审计任务与执行记录。
+        </p>
+        <div
+          id="workspace-list"
+          class="workspace-list"
+          aria-label="已有工作空间"
+        ></div>
+        <form id="workspace-create-form" class="workspace-create-form">
+          <h3>新建工作空间</h3>
+          <label for="workspace-project-name">项目名称 <span>可选</span></label
+          ><input
+            id="workspace-project-name"
+            autocomplete="off"
+            placeholder="例如：支付服务"
+            maxlength="100"
+          />
+          <label for="workspace-repository">代码目录</label>
+          <div class="input-with-button">
+            <input
+              id="workspace-repository"
+              required
+              autocomplete="off"
+              placeholder="/path/to/repository"
+            /><button id="workspace-browse" type="button" class="text-button">
+              浏览目录
+            </button>
+          </div>
+          <p class="field-help">
+            关联本机已有源码目录，工作空间创建后即可开始审计。
+          </p>
+          <div class="modal-footer">
+            <button id="create-workspace" type="submit" class="primary">
+              创建工作空间
+            </button>
+          </div>
+        </form>
+      </div>
+    </dialog>
+    <dialog id="settings-modal">
+      <form id="config-form" class="modal-form">
+        <div class="modal-heading">
+          <div>
+            <span class="eyebrow">MODEL CONNECTION</span>
+            <h2>模型配置</h2>
+          </div>
+          <button
+            type="button"
+            class="icon-button close-modal"
+            aria-label="关闭"
+          >
+            ×
+          </button>
+        </div>
+        <p class="modal-description">
+          连接真实模型。API Key 仅保存在本机服务端。
+        </p>
+        <label for="provider">供应商</label
+        ><select id="provider">
+          <option value="deepseek">DeepSeek</option>
+          <option value="custom">自定义兼容服务</option>
+        </select>
+        <div class="two-columns">
+          <div>
+            <label for="api">API 协议</label
+            ><select id="api">
+              <option value="openai-completions">Chat Completions</option>
+              <option value="openai-responses">Responses</option>
+              <option value="anthropic-messages">Anthropic Messages</option>
+            </select>
+          </div>
+          <div>
+            <label for="model">模型 ID</label
+            ><input id="model" list="model-options" required /><datalist
+              id="model-options"
+            ></datalist>
+          </div>
+        </div>
+        <label for="base-url">Base URL</label
+        ><input
+          id="base-url"
+          type="url"
+          required
+          placeholder="https://api.deepseek.com/v1"
+        /><label for="api-key">API Key <span>留空保留已有配置</span></label
+        ><input
+          id="api-key"
+          type="password"
+          autocomplete="new-password"
+          placeholder="sk-…"
+        />
+        <div id="credential-source" class="field-help"></div>
+        <details class="advanced-settings">
+          <summary>请求参数</summary>
+          <div class="two-columns">
+            <div>
+              <label for="context-window">上下文窗口</label
+              ><input id="context-window" type="number" min="256" required />
+            </div>
+            <div>
+              <label for="max-tokens">单次最大输出</label
+              ><input id="max-tokens" type="number" min="256" required />
+            </div>
+          </div>
+        </details>
+        <div
+          id="config-result"
+          class="config-result hidden"
+          role="status"
+        ></div>
+        <div class="modal-footer">
+          <button type="button" id="test-connection" class="secondary">
+            测试真实连接</button
+          ><button type="submit" id="save-config" class="primary">
+            保存配置
+          </button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="browse-modal">
+      <div class="modal-form">
+        <div class="modal-heading">
+          <div>
+            <span class="eyebrow">LOCAL REPOSITORY</span>
+            <h2>选择代码目录</h2>
+          </div>
+          <button class="icon-button close-modal" aria-label="关闭">×</button>
+        </div>
+        <div class="browse-location">
+          <button id="parent-directory" class="secondary">↑ 上一级</button
+          ><input id="browse-path" aria-label="目录路径" /><button
+            id="go-directory"
+            class="secondary"
+          >
+            前往
+          </button>
+        </div>
+        <div id="directory-list" class="directory-list"></div>
+        <div class="modal-footer">
+          <span class="field-help">双击文件夹进入</span
+          ><button id="select-directory" class="primary">使用此目录</button>
+        </div>
+      </div>
+    </dialog>
+    <div id="toast" role="status"></div>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

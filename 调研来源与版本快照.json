@@ -1,0 +1,127 @@
+{
+  "research_date": "2026-10-29",
+  "timezone": "Asia/Shanghai",
+  "checked_at": "2026-10-29T15:03:23.129289+08:00",
+  "scope": "Requirements analysis and source/document-based architecture assessment only",
+  "inputs": [
+    {
+      "id": "A",
+      "sha256": "26abf6c00f5139bbc655f1e52df634951262e22dd7552fcac9981a53d429ed96",
+      "evidence_type": "user-provided retrospective; incident and vulnerability claims not independently reproduced",
+      "input_reference": "A（用户提供的复盘，原始附件不随公开仓库分发）"
+    },
+    {
+      "id": "B",
+      "sha256": "cb61353404fd0f743620a71afe93999def96298ff02cc7deeff5a0d7f239cfb1",
+      "evidence_type": "user-provided retrospective; incident and vulnerability claims not independently reproduced",
+      "input_reference": "B（用户提供的复盘，原始附件不随公开仓库分发）"
+    },
+    {
+      "id": "C",
+      "sha256": "37a6367c566908ba341819d403a9e9fcd606816617a0dec9ee12f6a7e2b58262",
+      "evidence_type": "user-provided retrospective; incident and vulnerability claims not independently reproduced",
+      "input_reference": "C（用户提供的复盘，原始附件不随公开仓库分发）"
+    }
+  ],
+  "repositories": [
+    {
+      "id": "dsh",
+      "repository": "https://github.com/deepseek-ai/deepseek-harness",
+      "branch_observed": "master",
+      "commit": "f3803c96974ad4a94195fb97e5c637e9c2a3afe3",
+      "commit_time_utc": "2026-10-27T18:17:58Z",
+      "license_spdx_observed": "MIT",
+      "verification": "Read public repository metadata, README, selected authoring/interface documents; no build or runtime benchmark performed.",
+      "sources": [
+        {
+          "url": "https://github.com/deepseek-ai/deepseek-harness/blob/f3803c96974ad4a94195fb97e5c637e9c2a3afe3/README.md",
+          "fetched_content_sha256": "0f5516be2acde776f05572cbc8c3093c90549afe04ce118e11157d073d5d15f4",
+          "content_fetch_ref": "exact immutable commit"
+        },
+        {
+          "url": "https://github.com/deepseek-ai/deepseek-harness/blob/f3803c96974ad4a94195fb97e5c637e9c2a3afe3/LICENSE",
+          "fetched_content_sha256": "ebb4f09972aee8608be255debaf78451a68e95c290f55c240dec2ecfa16ea6be",
+          "content_fetch_ref": "exact immutable commit"
+        }
+      ]
+    },
+    {
+      "id": "grok",
+      "repository": "https://github.com/xai-org/grok-build",
+      "branch_observed": "main",
+      "commit": "2bdd1d6a6369de0e8c68132ea4539e9abd9e14a8",
+      "commit_time_utc": "2026-09-29T16:57:09Z",
+      "license_spdx_observed": "Apache-2.0",
+      "verification": "Read public repository metadata, README, selected authoring/interface documents; no build or runtime benchmark performed.",
+      "sources": [
+        {
+          "url": "https://github.com/xai-org/grok-build/blob/2bdd1d6a6369de0e8c68132ea4539e9abd9e14a8/README.md",
+          "fetched_content_sha256": "322066de9f5bc136295bd0ae4f1752cef3d8dcb1a8f9d88044609e7b6d7abcf7",
+          "content_fetch_ref": "exact immutable commit"
+        },
+        {
+          "url": "https://github.com/xai-org/grok-build/blob/2bdd1d6a6369de0e8c68132ea4539e9abd9e14a8/LICENSE",
+          "fetched_content_sha256": "116f7778b9802e569b7fa3a532b17bd80eb13c67837def01eed093d4ea472f28",
+          "content_fetch_ref": "exact immutable commit"
+        }
+      ]
+    },
+    {
+      "id": "pi",
+      "repository": "https://github.com/earendil-works/pi",
+      "branch_observed": "main",
+      "commit": "67c63c0f7ff41a55176683b0f55bbd8fb0f4935e",
+      "commit_time_utc": "2026-10-29T06:49:17Z",
+      "license_spdx_observed": "MIT",
+      "verification": "Read public repository metadata, README, selected authoring/interface documents; no build or runtime benchmark performed.",
+      "sources": [
+        {
+          "url": "https://github.com/earendil-works/pi/blob/67c63c0f7ff41a55176683b0f55bbd8fb0f4935e/README.md",
+          "fetched_content_sha256": "69cb1e626257bd68d041f05513815e426717a843ddc0e7706802865ec7fd898c",
+          "content_fetch_ref": "exact immutable commit"
+        },
+        {
+          "url": "https://github.com/earendil-works/pi/blob/67c63c0f7ff41a55176683b0f55bbd8fb0f4935e/LICENSE",
+          "fetched_content_sha256": "0457f5bcec3b3b211605dfb5d1a49042fd638f3686a410fe099c24a25af13c48",
+          "content_fetch_ref": "exact immutable commit"
+        }
+      ],
+      "coding_agent_source_version": "1.4.0"
+    },
+    {
+      "id": "opencode",
+      "repository": "https://github.com/anomalyco/opencode",
+      "branch_observed": "dev",
+      "commit": "510aa79d075c32e75f85b7774ff7390370c22b18",
+      "commit_time_utc": "2026-10-29T06:05:00Z",
+      "license_spdx_observed": "MIT",
+      "verification": "Read public repository metadata, README, selected authoring/interface documents; no build or runtime benchmark performed.",
+      "sources": [
+        {
+          "url": "https://github.com/anomalyco/opencode/blob/510aa79d075c32e75f85b7774ff7390370c22b18/README.md",
+          "fetched_content_sha256": "a1b20d3212d19d10f7567e80730cc84b32879a1c7bb5b04bfa77610163a589f5",
+          "content_fetch_ref": "exact immutable commit"
+        },
+        {
+          "url": "https://github.com/anomalyco/opencode/blob/510aa79d075c32e75f85b7774ff7390370c22b18/LICENSE",
+          "fetched_content_sha256": "625f0f619133f89bbbb2abe37369613dfa1885eba1e50d02170deb62bb42cb6b",
+          "content_fetch_ref": "exact immutable commit"
+        }
+      ]
+    }
+  ],
+  "codex": {
+    "verification": "Official documentation retrieved; no binary pinned or runtime benchmark performed",
+    "sources": [
+      "https://developers.openai.com/blog/codex-as-a-platform",
+      "https://learn.chatgpt.com/docs/app-server",
+      "https://learn.chatgpt.com/docs/config-file/config-reference",
+      "https://learn.chatgpt.com/docs/open-source"
+    ]
+  },
+  "limitations": [
+    "Source package versions do not establish npm latest, released binary behavior, or API stability.",
+    "No comparative audit accuracy, model cost, sandbox strength, or throughput benchmark was performed.",
+    "B and C may refer to the same Django audit and must not be counted as independent samples."
+  ]
+}
